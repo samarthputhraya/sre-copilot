@@ -3,8 +3,12 @@
 This is a fork of [neeltom92/sre-copilot](https://github.com/neeltom92/sre-copilot) (MIT, see `LICENSE`), made to
 measure one real app's switch off a retiring model. It isn't the original project and isn't endorsed by its author.
 
-SRE Copilot's default model, `claude_model` in `config.py`, is `claude-sonnet-4-5-20250929`. Anthropic retires that
-model on 30 Nov 2026 and names `claude-sonnet-5-5` as its replacement. This fork adds, and changes nothing else:
+SRE Copilot names two Claude models. `Config`'s own default, `claude_model` in `config.py`, is
+`claude-sonnet-4-5-20250929`: Anthropic retires it on 30 Nov 2026 and names `claude-sonnet-5-5` as its replacement.
+`Config.from_env()`, which `app.py` and `server.py` use, falls back to `claude-sonnet-4-20250514` when `CLAUDE_MODEL`
+isn't set, and the Helm chart (`deploy/chart/values.yaml`) and the README name it too: Anthropic retired that model on
+15 Jun 2026 and says requests to a retired model fail (its model deprecations page, read 21 Nov 2026). A retired model
+can't be recorded, so the baseline below is of `claude-sonnet-4-5-20250929`. This fork adds, and changes nothing else:
 
 - `scenarios/`: 8 conversations, each one of the app's own rules (ask for the environment before an APM query,
   confirm before acknowledging or resolving an incident, use the sidebar's cluster and namespace, and so on). Each

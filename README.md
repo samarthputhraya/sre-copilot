@@ -309,7 +309,7 @@ make check-k8s
 |----------|----------|-------------|
 | `ANTHROPIC_API_KEY` | Yes | Claude (Anthropic) API key (preferred) |
 | `CLAUDE_API_KEY` | No | Alias for `ANTHROPIC_API_KEY` |
-| `CLAUDE_MODEL` | No | Claude model (default: claude-sonnet-4-20250514) |
+| `CLAUDE_MODEL` | No | Claude model (default: claude-sonnet-5-5) |
 | `DATADOG_API_KEY` | No | Datadog API key (preferred) |
 | `DD_API_KEY` | No | Alias for `DATADOG_API_KEY` |
 | `DATADOG_APP_KEY` | No | Datadog application key (preferred) |

@@ -61,7 +61,7 @@ class Config:
 
     # Claude API
     anthropic_api_key: str = ""
-    claude_model: str = "claude-sonnet-4-5-20250929"
+    claude_model: str = "claude-sonnet-5-5"
 
     # Datadog
     datadog_api_key: str = ""

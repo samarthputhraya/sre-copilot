@@ -48,7 +48,7 @@ application:
     open:
       PORT: "8501"
       DATADOG_SITE: "datadoghq.com"
-      CLAUDE_MODEL: "claude-sonnet-4-20250514"
+      CLAUDE_MODEL: "claude-sonnet-5-5"
       K8S_ENABLED: "true"
 
     # Secret environment variables

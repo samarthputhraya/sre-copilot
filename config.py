@@ -61,7 +61,7 @@ class Config:
 
     # Claude API
     anthropic_api_key: str = ""
-    claude_model: str = "claude-sonnet-4-5-20250929"
+    claude_model: str = "claude-sonnet-5-5"
 
     # Datadog
     datadog_api_key: str = ""
@@ -80,7 +80,7 @@ class Config:
         """Load configuration from environment variables."""
         return cls(
             anthropic_api_key=_first_env("ANTHROPIC_API_KEY", "CLAUDE_API_KEY", default=""),
-            claude_model=os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514"),
+            claude_model=os.getenv("CLAUDE_MODEL", "claude-sonnet-5-5"),
             datadog_api_key=_first_env("DATADOG_API_KEY", "DD_API_KEY", default=""),
             datadog_app_key=_first_env("DATADOG_APP_KEY", "DD_APP_KEY", default=""),
             datadog_site=os.getenv("DATADOG_SITE", "datadoghq.com"),

@@ -1,0 +1,588 @@
+{
+  "id": "oncall_now",
+  "name": "Who's on call: ask PagerDuty",
+  "kind": "agent",
+  "input": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are an expert SRE (Site Reliability Engineering) assistant helping engineers with on-call duties, incident response, and observability.\n\nYou have access to Datadog and PagerDuty tools to help investigate issues, check system health, and manage incidents.\n\n## Your Capabilities:\n\n### Datadog APM (Application Performance Monitoring)\n- List APM services and request counts\n- Get service statistics (latency, throughput, error rate)\n- Search traces by service, duration, or errors\n- Get detailed trace information with spans\n\n### PagerDuty\n- List active incidents and their status\n- Check who is on-call\n- View service health\n- Acknowledge and resolve incidents\n- Review recent alerts\n\n### Kubernetes (Direct Cluster Access)\n- List available cluster contexts from local kubeconfig\n- List namespaces in a selected cluster\n- Fetch pod logs in real-time (no Datadog lag)\n- View logs from crashed containers (previous logs)\n- Support multi-container pods\n\n## Kubernetes - Two Ways to Access:\n\n### 1. Direct Kubernetes Access (Real-time, No Lag) - USE THIS FOR POD OPERATIONS\n**Tools:** k8s_get_contexts, k8s_get_namespaces, k8s_list_pods, k8s_get_pod_logs\n\nWhen users ask for **pods** or **pod logs**:\n- Use the direct K8s tools (k8s_get_*)\n- **IMPORTANT**: If the message includes \"[User has selected Kubernetes context: '...' and namespace: '...' in the sidebar]\", use those values directly - DO NOT ask the user to specify them again\n- If no sidebar context is provided and context/namespace not mentioned in the query, then ask the user OR use k8s_get_contexts to list available\n- For crashed pods, use previous=true to get previous container logs\n- For multi-container pods, specify container_name\n- **DO NOT ask for environment (prod/stg/dev)** - use cluster context names instead (e.g., \"minikube\", \"production-eks-cluster\")\n\nWorkflow:\n1. List contexts → k8s_get_contexts\n2. List namespaces → k8s_get_namespaces\n3. List pods → k8s_list_pods (shows pod status, restarts, age)\n4. Get pod logs → k8s_get_pod_logs\n\nExamples:\n- \"List all pods in kagent namespace\" → Use k8s_list_pods with context and namespace\n- \"Show logs for pod nginx\" → Use k8s_get_pod_logs with context and namespace\n- \"Show previous logs for crashed pod\" → Use k8s_get_pod_logs with previous=true\n\n\n**APM queries**: For APM traces, services, and latency queries, use the service name and environment tag:\n- Examples: `env:prod`, `env:stg`, `env:dev` (tags vary by organization)\n- Common mappings: production→prod, staging→stg, development→dev\n- If the user doesn't specify an environment, ask: \"Which environment would you like to check?\"\n\n## Common Query Patterns:\n\n**Service latency queries**: When users ask about p99/p95 latency for a service:\n- Use `datadog_get_service_stats` tool\n- Show latency metrics (avg, p95, p99), throughput, and error rate\n- Ask for environment if not specified (e.g., prod, stg, dev)\n- Present results clearly with units (ms for latency, req/s for throughput, % for error rate)\n\n**Slow request investigation**: When users ask about slow requests or high latency:\n- Use `datadog_search_traces` to find slow traces (e.g., query: \"service:api @duration:>1s\")\n- Use `datadog_get_trace_details` to drill down into specific slow traces\n- Identify bottleneck spans and their duration\n\n**APM service overview**: When users want to see all instrumented services:\n- Use `datadog_get_apm_services` to list services with request counts\n- Filter by environment if specified\n- Help identify high-traffic services or services with low activity\n\n## Guidelines:\n\n1. **Be proactive**: When investigating issues, use multiple tools to gather comprehensive information.\n\n2. **Provide context**: Explain what you're checking and why, especially during incident response.\n\n3. **Suggest next steps**: After gathering information, recommend actions the engineer can take.\n\n4. **Be concise but thorough**: Present findings clearly, highlight critical information.\n\n5. **Correlate data**: Connect information across Datadog and PagerDuty to provide a full picture.\n\n6. **Safety first**: For destructive actions (acknowledging/resolving incidents), confirm with the user before proceeding.\n\n7. **Ask for environment**: For Kubernetes queries, always confirm the environment (prod/stg/dev) if not specified.\n\n## Response Format:\n\nWhen presenting findings:\n- Use clear headings and bullet points\n- Highlight critical issues with emphasis\n- Include relevant links when available\n- Summarize key metrics with actual values\n- Provide actionable recommendations\n\nRemember: You're helping engineers during potentially stressful on-call situations. Be clear, direct, and helpful."
+      },
+      {
+        "role": "user",
+        "content": "Who's on call for checkout right now?"
+      }
+    ],
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "datadog_get_apm_services",
+          "description": "List APM services with request counts. See all instrumented services and traffic levels.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "env": {
+                "type": "string",
+                "description": "Filter by environment (e.g., 'prod')"
+              },
+              "limit": {
+                "type": "integer",
+                "description": "Maximum services to return",
+                "default": 50
+              }
+            },
+            "required": []
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "datadog_get_service_stats",
+          "description": "Get APM statistics for a service: latency (avg/p95/p99), throughput, error rate. Use for performance investigation.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "service": {
+                "type": "string",
+                "description": "Service name"
+              },
+              "env": {
+                "type": "string",
+                "description": "Environment filter"
+              },
+              "from_time": {
+                "type": "string",
+                "description": "Start time",
+                "default": "now-1h"
+              },
+              "to_time": {
+                "type": "string",
+                "description": "End time",
+                "default": "now"
+              }
+            },
+            "required": [
+              "service"
+            ]
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "datadog_search_traces",
+          "description": "Search APM traces by service, duration, or errors. Find slow requests or investigate endpoints.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "description": "Trace search query (e.g., 'service:api @duration:>1s')"
+              },
+              "from_time": {
+                "type": "string",
+                "description": "Start time",
+                "default": "now-15m"
+              },
+              "to_time": {
+                "type": "string",
+                "description": "End time",
+                "default": "now"
+              },
+              "limit": {
+                "type": "integer",
+                "description": "Maximum traces to return",
+                "default": 50
+              }
+            },
+            "required": [
+              "query"
+            ]
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "datadog_get_trace_details",
+          "description": "Get detailed trace information including all spans. Drill down to identify bottlenecks.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "trace_id": {
+                "type": "string",
+                "description": "The trace ID"
+              }
+            },
+            "required": [
+              "trace_id"
+            ]
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "pagerduty_get_incidents",
+          "description": "List PagerDuty incidents. Check active incidents, urgency, and assignments.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "statuses": {
+                "type": "array",
+                "description": "Filter by status: 'triggered', 'acknowledged', 'resolved'",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "urgency": {
+                "type": "string",
+                "description": "Filter by urgency: 'high', 'low'"
+              },
+              "limit": {
+                "type": "integer",
+                "description": "Maximum incidents to return",
+                "default": 25
+              }
+            },
+            "required": []
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "pagerduty_get_incident_details",
+          "description": "Get detailed PagerDuty incident info including timeline and notes.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "incident_id": {
+                "type": "string",
+                "description": "PagerDuty incident ID"
+              }
+            },
+            "required": [
+              "incident_id"
+            ]
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "pagerduty_get_oncall",
+          "description": "Get current on-call users. Find who is responsible for incidents or services.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "schedule_ids": {
+                "type": "array",
+                "description": "Filter by schedule IDs",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "escalation_policy_ids": {
+                "type": "array",
+                "description": "Filter by escalation policy IDs",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": []
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "pagerduty_get_services",
+          "description": "List PagerDuty services and their status.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "name_filter": {
+                "type": "string",
+                "description": "Filter services by name"
+              },
+              "limit": {
+                "type": "integer",
+                "description": "Maximum services to return",
+                "default": 50
+              }
+            },
+            "required": []
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "pagerduty_acknowledge_incident",
+          "description": "Acknowledge a PagerDuty incident. Use when starting to work on an incident.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "incident_id": {
+                "type": "string",
+                "description": "PagerDuty incident ID to acknowledge"
+              }
+            },
+            "required": [
+              "incident_id"
+            ]
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "pagerduty_resolve_incident",
+          "description": "Resolve a PagerDuty incident. Use when an incident is fixed.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "incident_id": {
+                "type": "string",
+                "description": "PagerDuty incident ID to resolve"
+              },
+              "resolution": {
+                "type": "string",
+                "description": "Resolution note"
+              }
+            },
+            "required": [
+              "incident_id"
+            ]
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "pagerduty_get_recent_alerts",
+          "description": "Get recent alerts/triggers from PagerDuty. See what alerts have fired recently.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "service_id": {
+                "type": "string",
+                "description": "Filter by service ID"
+              },
+              "since_hours": {
+                "type": "integer",
+                "description": "Look back this many hours",
+                "default": 24
+              },
+              "limit": {
+                "type": "integer",
+                "description": "Maximum alerts to return",
+                "default": 50
+              }
+            },
+            "required": []
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "k8s_get_contexts",
+          "description": "List available Kubernetes cluster contexts from local kubeconfig. Use to see which clusters are available.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": []
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "k8s_get_namespaces",
+          "description": "List namespaces in a Kubernetes cluster. Use after selecting a cluster context to see available namespaces.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "context": {
+                "type": "string",
+                "description": "Kubernetes context name"
+              }
+            },
+            "required": [
+              "context"
+            ]
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "k8s_list_pods",
+          "description": "List all pods in a namespace with their status, restarts, and age. Use this to see what pods are running before fetching logs.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "context": {
+                "type": "string",
+                "description": "Kubernetes context name"
+              },
+              "namespace": {
+                "type": "string",
+                "description": "Namespace name"
+              }
+            },
+            "required": [
+              "context",
+              "namespace"
+            ]
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "k8s_get_pod_logs",
+          "description": "Fetch logs from a pod in real-time (no Datadog lag). For crashed pods, use previous=true. For multi-container pods, specify container_name.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "context": {
+                "type": "string",
+                "description": "Kubernetes context name"
+              },
+              "namespace": {
+                "type": "string",
+                "description": "Namespace name"
+              },
+              "pod_name": {
+                "type": "string",
+                "description": "Pod name"
+              },
+              "container_name": {
+                "type": "string",
+                "description": "Container name (required for multi-container pods)"
+              },
+              "tail_lines": {
+                "type": "integer",
+                "description": "Number of lines to retrieve (default: 100, max: 10000)",
+                "default": 100
+              },
+              "since_seconds": {
+                "type": "integer",
+                "description": "Only return logs newer than N seconds"
+              },
+              "previous": {
+                "type": "boolean",
+                "description": "If True, get logs from previous container (for crashed pods)",
+                "default": false
+              }
+            },
+            "required": [
+              "context",
+              "namespace",
+              "pod_name"
+            ]
+          }
+        }
+      }
+    ],
+    "tool_results": {
+      "datadog_get_apm_services": {
+        "services": [
+          {
+            "service": "checkout",
+            "env": "prod",
+            "requests": 184220
+          },
+          {
+            "service": "payments",
+            "env": "prod",
+            "requests": 95110
+          },
+          {
+            "service": "catalog",
+            "env": "prod",
+            "requests": 40211
+          }
+        ]
+      },
+      "datadog_get_service_stats": {
+        "service": "checkout",
+        "env": "prod",
+        "window": "now-1h to now",
+        "latency_ms": {
+          "avg": 182,
+          "p95": 640,
+          "p99": 1310
+        },
+        "throughput_rps": 51.2,
+        "error_rate_pct": 0.8
+      },
+      "datadog_search_traces": {
+        "count": 2,
+        "traces": [
+          {
+            "trace_id": "7362915004127734912",
+            "service": "payments",
+            "resource": "POST /v1/charges",
+            "duration_ms": 4820,
+            "status": "ok",
+            "start": "2026-11-21T09:14:02Z"
+          },
+          {
+            "trace_id": "5410028871236650113",
+            "service": "payments",
+            "resource": "POST /v1/charges",
+            "duration_ms": 3115,
+            "status": "error",
+            "start": "2026-11-21T09:11:47Z"
+          }
+        ]
+      },
+      "datadog_get_trace_details": {
+        "trace_id": "7362915004127734912",
+        "spans": [
+          {
+            "name": "POST /v1/charges",
+            "service": "payments",
+            "duration_ms": 4820
+          },
+          {
+            "name": "postgres.query",
+            "resource": "SELECT * FROM ledger_entries WHERE account_id = ?",
+            "duration_ms": 4210
+          },
+          {
+            "name": "http.request",
+            "resource": "POST fraud-check",
+            "duration_ms": 380
+          }
+        ]
+      },
+      "pagerduty_get_incidents": {
+        "incidents": [
+          {
+            "id": "Q2W8KD4L1M",
+            "title": "checkout: p99 latency above 1s",
+            "status": "triggered",
+            "urgency": "high",
+            "service": "checkout",
+            "created_at": "2026-11-21T09:02:11Z",
+            "assigned_to": "Avery Example"
+          }
+        ]
+      },
+      "pagerduty_get_incident_details": {
+        "id": "Q2W8KD4L1M",
+        "title": "checkout: p99 latency above 1s",
+        "status": "acknowledged",
+        "urgency": "high",
+        "service": "checkout",
+        "notes": [
+          {
+            "content": "Rolled checkout back to v412; p99 back under 400 ms.",
+            "created_at": "2026-11-21T09:31:40Z"
+          }
+        ]
+      },
+      "pagerduty_get_oncall": {
+        "oncalls": [
+          {
+            "user": "Avery Example",
+            "schedule": "Checkout primary",
+            "escalation_level": 1,
+            "until": "2026-11-22T09:00:00Z"
+          },
+          {
+            "user": "Jordan Sample",
+            "schedule": "Platform secondary",
+            "escalation_level": 2,
+            "until": "2026-11-24T09:00:00Z"
+          }
+        ]
+      },
+      "pagerduty_get_services": {
+        "services": [
+          {
+            "id": "PSV1CHK",
+            "name": "checkout",
+            "status": "critical"
+          },
+          {
+            "id": "PSV2PAY",
+            "name": "payments",
+            "status": "active"
+          }
+        ]
+      },
+      "pagerduty_acknowledge_incident": {
+        "id": "Q2W8KD4L1M",
+        "status": "acknowledged"
+      },
+      "pagerduty_resolve_incident": {
+        "id": "Q2W8KD4L1M",
+        "status": "resolved"
+      },
+      "pagerduty_get_recent_alerts": {
+        "alerts": [
+          {
+            "service": "checkout",
+            "summary": "p99 latency above 1s",
+            "created_at": "2026-11-21T09:01:58Z"
+          }
+        ]
+      },
+      "k8s_get_contexts": {
+        "contexts": [
+          "minikube",
+          "production-eks-cluster",
+          "staging-eks-cluster"
+        ],
+        "current": "minikube"
+      },
+      "k8s_get_namespaces": {
+        "namespaces": [
+          "default",
+          "kagent",
+          "payments",
+          "kube-system"
+        ]
+      },
+      "k8s_list_pods": {
+        "pods": [
+          {
+            "name": "payments-api-7d9f8c6b5-x2k4q",
+            "status": "CrashLoopBackOff",
+            "restarts": 12,
+            "age": "3h"
+          },
+          {
+            "name": "payments-api-7d9f8c6b5-m9p7z",
+            "status": "Running",
+            "restarts": 0,
+            "age": "3h"
+          },
+          {
+            "name": "payments-worker-6c5d4f9b8-tt8vn",
+            "status": "Running",
+            "restarts": 1,
+            "age": "1d"
+          }
+        ]
+      },
+      "k8s_get_pod_logs": {
+        "pod": "payments-api-7d9f8c6b5-x2k4q",
+        "lines": [
+          "2026-11-21T09:20:14Z INFO starting payments-api v2.31.0",
+          "2026-11-21T09:20:15Z ERROR could not connect to postgres at payments-db:5432: connection refused",
+          "2026-11-21T09:20:15Z FATAL exiting: database unavailable"
+        ]
+      }
+    }
+  }
+}

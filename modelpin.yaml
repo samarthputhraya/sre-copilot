@@ -1,0 +1,17 @@
+# Modelpin settings for SRE Copilot (modelpin 0.5.3), added to this fork to measure the switch off the app's default
+# model before Anthropic retires it. config.py's claude_model and model.txt hold the same id.
+models:
+  - claude-sonnet-4-5-20250929
+
+# scripts/modelpin_scenarios.py writes them from agent.py's SYSTEM_PROMPT and tools/langchain_tools.py's tools.
+scenarios_dir: scenarios
+
+# Uses the key in ANTHROPIC_API_KEY.
+providers:
+  - anthropic
+
+# Each check replays a scenario 5 times on the new model. The baseline in .modelpin/ holds 10 runs per scenario of the
+# current model, recorded before Anthropic switches it off.
+runs: 5
+
+# No judge_model: answers are compared on tool calls and refusals only, and reports say what that leaves unmeasured.
